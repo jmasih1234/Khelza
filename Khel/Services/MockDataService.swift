@@ -464,7 +464,7 @@ struct MockDataService {
             (.yellowCard, 20),
             (.substitution, 25),
             (.tacticalChange, 10),
-            (.varReview, 8),
+            (.varCheck, 8),
             (.penaltyAwarded, 5),
             (.injury, 7),
         ]
@@ -515,7 +515,7 @@ struct MockDataService {
                 "\(clubName) changes formation",
                 "Changing formation mid-match is like calling a new play in football. A switch from 4-3-3 to 3-5-2 means moving a defender forward to midfield, creating numerical superiority in the middle but potentially exposing the defense."
             )
-        case .varReview:
+        case .varCheck:
             return (
                 "VAR reviewing a decision for \(clubName)",
                 "VAR checks happen for goals, penalties, red cards, and mistaken identity. The on-field referee can be asked to review the monitor ('On Field Review') for subjective decisions, making it soccer's version of instant replay."

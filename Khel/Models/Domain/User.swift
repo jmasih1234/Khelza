@@ -46,4 +46,7 @@ struct UserProfile: Codable, Identifiable {
     var perfectQuizzes: Int = 0
     var correctPredictions: Int = 0
     var exactPredictions: Int = 0
+    
+    // Knowledge profile — per-topic learning progress
+    var knowledgeProfile: UserKnowledgeProfile = UserKnowledgeProfile()
 }

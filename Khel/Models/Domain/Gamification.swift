@@ -76,3 +76,115 @@ struct ActivityItem: Identifiable {
     let xpEarned: Int
     let timestamp: Date
 }
+
+// MARK: - XP Transactions (platform-compatible audit trail)
+
+/// Represents a single XP-earning event. Eventually server-authoritative.
+struct XPTransaction: Identifiable, Codable {
+    let id: UUID
+    let amount: Int
+    let reason: XPReason
+    let timestamp: Date
+    let metadata: [String: String]?
+    
+    init(
+        id: UUID = UUID(),
+        amount: Int,
+        reason: XPReason,
+        timestamp: Date = Date(),
+        metadata: [String: String]? = nil
+    ) {
+        self.id = id
+        self.amount = amount
+        self.reason = reason
+        self.timestamp = timestamp
+        self.metadata = metadata
+    }
+}
+
+enum XPReason: String, Codable, CaseIterable {
+    case lessonCardViewed
+    case lessonCompleted
+    case quizCorrectAnswer
+    case quizPerfectBonus
+    case liveQuizCorrect
+    case contextualQuizCorrect
+    case dailyChallenge
+    case predictionCorrect
+    case predictionExactScore
+    case streakDaily
+    case streakWeekBonus
+    case onboardingBonus
+}
+
+// MARK: - Knowledge Profile (per-topic learning progress)
+
+/// Tracks the user's knowledge across sports topics. Eventually server-authoritative.
+struct UserKnowledgeProfile: Codable {
+    var topicProgress: [String: TopicProgress]
+    
+    init(topicProgress: [String: TopicProgress] = [:]) {
+        self.topicProgress = topicProgress
+    }
+    
+    /// Get progress for a specific topic, creating a default entry if absent
+    func progress(for topic: KnowledgeTopic) -> TopicProgress {
+        topicProgress[topic.id] ?? TopicProgress()
+    }
+    
+    /// Record a correct answer for a topic
+    mutating func recordCorrectAnswer(for topic: KnowledgeTopic) {
+        var p = progress(for: topic)
+        p.correctAnswers += 1
+        p.totalAnswers += 1
+        p.lastActivityDate = Date()
+        topicProgress[topic.id] = p
+    }
+    
+    /// Record an incorrect answer for a topic
+    mutating func recordIncorrectAnswer(for topic: KnowledgeTopic) {
+        var p = progress(for: topic)
+        p.totalAnswers += 1
+        p.lastActivityDate = Date()
+        topicProgress[topic.id] = p
+    }
+}
+
+struct TopicProgress: Codable {
+    var correctAnswers: Int = 0
+    var totalAnswers: Int = 0
+    var lastActivityDate: Date?
+    
+    /// Mastery percentage (0.0 - 1.0)
+    var mastery: Double {
+        guard totalAnswers > 0 else { return 0 }
+        return Double(correctAnswers) / Double(totalAnswers)
+    }
+}
+
+/// Stable identifiers for knowledge topics — shared across platforms
+struct KnowledgeTopic: Identifiable, Codable, Hashable {
+    let id: String
+    let displayName: String
+    let parentTopicID: String?
+    let icon: String
+    
+    init(id: String, displayName: String, parentTopicID: String? = nil, icon: String = "book.fill") {
+        self.id = id
+        self.displayName = displayName
+        self.parentTopicID = parentTopicID
+        self.icon = icon
+    }
+}
+
+/// Well-known knowledge topics
+extension KnowledgeTopic {
+    static let offside = KnowledgeTopic(id: "rules.offside", displayName: "Offside", parentTopicID: "rules", icon: "flag.fill")
+    static let fouls = KnowledgeTopic(id: "rules.fouls", displayName: "Fouls & Free Kicks", parentTopicID: "rules", icon: "exclamationmark.triangle.fill")
+    static let var_ = KnowledgeTopic(id: "rules.var", displayName: "VAR", parentTopicID: "rules", icon: "tv.fill")
+    static let handball = KnowledgeTopic(id: "rules.handball", displayName: "Handball", parentTopicID: "rules", icon: "hand.raised.fill")
+    static let formations = KnowledgeTopic(id: "tactics.formations", displayName: "Formations", parentTopicID: "tactics", icon: "rectangle.3.group")
+    static let pressing = KnowledgeTopic(id: "tactics.pressing", displayName: "Pressing", parentTopicID: "tactics", icon: "sportscourt.fill")
+    static let positions = KnowledgeTopic(id: "players.positions", displayName: "Positions", parentTopicID: "players", icon: "person.3.fill")
+    static let competitions = KnowledgeTopic(id: "competitions", displayName: "Competitions", icon: "trophy.fill")
+}

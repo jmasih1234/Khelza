@@ -3,65 +3,190 @@ import SwiftUI
 struct LiveMatchCompanionView: View {
     @Environment(AppState.self) private var appState
     @State var viewModel: LiveViewModel
+    @State private var xpAwarded: Int = 0
+    @State private var showXPToast: Bool = false
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Match header
-            if let match = viewModel.currentMatch {
-                matchHeader(match)
-            }
-            
-            // Events timeline
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        if let match = viewModel.currentMatch {
-                            ForEach(match.events) { event in
-                                MatchEventRow(event: event)
+        ZStack {
+            VStack(spacing: 0) {
+                // Match header
+                if let match = viewModel.currentMatch {
+                    matchHeader(match)
+                }
+                
+                // Events timeline
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            if let match = viewModel.currentMatch {
+                                ForEach(match.events) { event in
+                                    MatchEventRow(event: event) {
+                                        viewModel.explainableEvent = event
+                                        viewModel.showExplanation()
+                                    }
                                     .id(event.id)
-                                
-                                Divider()
-                                    .padding(.leading, 66)
-                            }
-                        }
-                        
-                        // Live quiz
-                        if viewModel.isShowingQuiz, let quiz = viewModel.liveQuiz {
-                            LiveQuizBanner(question: quiz) { answer in
-                                let correct = viewModel.answerLiveQuiz(optionIndex: answer)
-                                if correct {
-                                    appState.awardXP(XPEngine.liveQuizCorrectXP)
+                                    .padding(.horizontal)
+                                    
+                                    Divider()
+                                        .padding(.leading, 66)
                                 }
                             }
-                            .padding()
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                        
-                        if viewModel.isSimulating {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text("Watching match...")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            
+                            // VAR Review banner
+                            if let reviewEvent = viewModel.eventUnderReview {
+                                varReviewBanner(reviewEvent)
+                                    .padding()
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
                             }
-                            .padding()
+                            
+                            // Live quiz (existing behavior)
+                            if viewModel.isShowingQuiz, let quiz = viewModel.liveQuiz {
+                                LiveQuizBanner(question: quiz) { answer in
+                                    let correct = viewModel.answerLiveQuiz(optionIndex: answer)
+                                    if correct {
+                                        Task {
+                                            let gamification = MockGamificationRepository(appState: appState)
+                                            let txn = await gamification.awardXP(
+                                                amount: XPEngine.liveQuizCorrectXP,
+                                                reason: .liveQuizCorrect
+                                            )
+                                            xpAwarded = txn.amount
+                                            showXPToast = true
+                                        }
+                                    }
+                                }
+                                .padding()
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                            }
+                            
+                            if viewModel.isSimulating {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                    Text("Watching match...")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.currentMatch?.events.count) {
+                        if let lastEvent = viewModel.currentMatch?.events.last {
+                            withAnimation {
+                                proxy.scrollTo(lastEvent.id, anchor: .bottom)
+                            }
                         }
                     }
                 }
-                .onChange(of: viewModel.currentMatch?.events.count) {
-                    if let lastEvent = viewModel.currentMatch?.events.last {
-                        withAnimation {
-                            proxy.scrollTo(lastEvent.id, anchor: .bottom)
-                        }
-                    }
+                
+                // Stats toggle
+                if let match = viewModel.currentMatch {
+                    statsBar(match)
                 }
             }
             
-            // Stats toggle
-            if let match = viewModel.currentMatch {
-                statsBar(match)
+            // Explain This overlay
+            if viewModel.isShowingExplanation, let event = viewModel.explainableEvent {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation {
+                            viewModel.dismissExplanation(showQuiz: false)
+                        }
+                    }
+                
+                ExplainThisView(
+                    event: event,
+                    knowledgeLevel: appState.userProfile.knowledgeLevel,
+                    onDismiss: {
+                        withAnimation {
+                            viewModel.dismissExplanation(showQuiz: false)
+                        }
+                    },
+                    onTakeQuiz: {
+                        withAnimation {
+                            viewModel.dismissExplanation(showQuiz: true)
+                        }
+                    }
+                )
+                .padding()
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
+            }
+            
+            // Contextual Quiz overlay
+            if viewModel.isShowingContextualQuiz,
+               let quiz = viewModel.contextualQuiz,
+               let topic = viewModel.contextualQuizTopic {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                
+                ContextualQuizView(
+                    question: quiz,
+                    topic: topic
+                ) { correct in
+                    Task {
+                        if correct {
+                            let gamification = MockGamificationRepository(appState: appState)
+                            let txn = await gamification.awardXP(
+                                amount: XPEngine.liveQuizCorrectXP,
+                                reason: .contextualQuizCorrect,
+                                metadata: ["topic": topic.id]
+                            )
+                            xpAwarded = txn.amount
+                            showXPToast = true
+                            
+                            // Update knowledge profile
+                            let knowledge = MockKnowledgeRepository(appState: appState)
+                            await knowledge.recordCorrectAnswer(for: topic)
+                        } else {
+                            let knowledge = MockKnowledgeRepository(appState: appState)
+                            await knowledge.recordIncorrectAnswer(for: topic)
+                        }
+                    }
+                    
+                    // Dismiss after delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        withAnimation {
+                            _ = viewModel.answerContextualQuiz(optionIndex: 0)
+                        }
+                    }
+                }
+                .padding()
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
+            }
+            
+            // XP toast
+            if showXPToast {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "star.fill")
+                            .foregroundStyle(.yellow)
+                        Text("+\(xpAwarded) XP earned!")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .shadow(radius: 10)
+                    .padding(.bottom, 80)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        withAnimation {
+                            showXPToast = false
+                        }
+                    }
+                }
             }
         }
+        .animation(.spring(response: 0.4), value: viewModel.isShowingExplanation)
+        .animation(.spring(response: 0.4), value: viewModel.isShowingContextualQuiz)
+        .animation(.spring(response: 0.4), value: showXPToast)
+        .animation(.spring(response: 0.4), value: viewModel.eventUnderReview?.id)
         .navigationTitle("Live Match")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -82,6 +207,42 @@ struct LiveMatchCompanionView: View {
             viewModel.stopSimulation()
         }
     }
+    
+    // MARK: - VAR Review Banner
+    
+    func varReviewBanner(_ event: MatchEvent) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "tv.fill")
+                .font(.title3)
+                .foregroundStyle(.purple)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("VAR REVIEW IN PROGRESS")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.purple)
+                
+                Text("Checking: \(event.description)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            
+            Spacer()
+            
+            ProgressView()
+                .tint(.purple)
+        }
+        .padding(12)
+        .background(.purple.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(.purple.opacity(0.3), lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Match Header
     
     func matchHeader(_ match: Match) -> some View {
         let home = viewModel.homeClub()
@@ -153,6 +314,8 @@ struct LiveMatchCompanionView: View {
         .padding()
         .background(Color(.systemGray6))
     }
+    
+    // MARK: - Stats
     
     func statsBar(_ match: Match) -> some View {
         HStack(spacing: 16) {

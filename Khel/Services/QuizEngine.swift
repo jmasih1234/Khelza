@@ -95,7 +95,7 @@ struct QuizEngine {
                 explanation: "A tactical change rearranges how players are positioned on the pitch. Teams often switch formations to respond to the opponent's strategy or game situation.",
                 xpValue: XPEngine.liveQuizCorrectXP
             )
-        case .varReview:
+        case .varCheck:
             return QuizQuestion(
                 id: UUID(),
                 question: "What does VAR stand for?",

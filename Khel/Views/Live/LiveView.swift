@@ -13,11 +13,10 @@ struct LiveView: View {
                     EmptyStateView(
                         icon: "antenna.radiowaves.left.and.right",
                         title: "No Live Matches",
-                        message: "There are no live matches right now. Start a simulated match to see the live companion in action!",
-                        buttonTitle: "Simulate Match"
+                        message: "Start the scripted Arsenal vs Liverpool match to experience the full Khelza live companion — with VAR reviews, disallowed goals, and contextual learning.",
+                        buttonTitle: "Start Test Match"
                     ) {
-                        let match = MockDataService.generateLiveMatch()
-                        viewModel.startMatch(match)
+                        viewModel.startTestMatch()
                         showingCompanion = true
                     }
                     Spacer()
@@ -49,8 +48,7 @@ struct LiveView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        let match = MockDataService.generateLiveMatch()
-                        viewModel.startMatch(match)
+                        viewModel.startTestMatch()
                         showingCompanion = true
                     } label: {
                         Image(systemName: "play.fill")

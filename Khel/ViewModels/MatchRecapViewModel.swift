@@ -16,7 +16,8 @@ class MatchRecapViewModel {
     var keyMoments: [MatchEvent] {
         guard let match else { return [] }
         return match.events.filter { event in
-            [.goal, .redCard, .penaltyAwarded, .varReview, .tacticalChange].contains(event.type)
+            let keyTypes: Set<MatchEventType> = [.goal, .redCard, .penaltyAwarded, .varCheck, .varDecision, .goalDisallowed, .tacticalChange]
+            return keyTypes.contains(event.type)
         }
     }
     
